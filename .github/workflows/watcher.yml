@@ -1,0 +1,29 @@
+name: USDT Watcher
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"   # كل 30 دقيقة
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run watcher
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          TRONGRID_API_KEY: ${{ secrets.TRONGRID_API_KEY }}
+          WATCH_ADDRESS: ${{ secrets.WATCH_ADDRESS }}
+        run: python usdt_watcher.py

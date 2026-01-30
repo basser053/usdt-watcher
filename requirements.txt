@@ -1,2 +1,2 @@
-requests
-base58
+requests==2.32.3
+base58==2.1.1

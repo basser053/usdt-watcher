@@ -134,10 +134,6 @@ def check_address_once():
 
     # 🔔 “رنّة طويلة” عمليًا: 3 رسائل بصوت
     send_telegram(msg, loud=True)
-    time.sleep(1.5)
-    send_telegram("🚨 تنبيه: راجع الحالة فورًا 🚨", loud=True)
-    time.sleep(1.5)
-    send_telegram("🚨 تنبيه: تأكد من الحالة الآن 🚨", loud=True)
 
 if __name__ == "__main__":
     try:
@@ -145,3 +141,4 @@ if __name__ == "__main__":
     except Exception as e:
         send_telegram(f"⚠️ خطأ أثناء الفحص:\n{e}", loud=True)
         raise
+

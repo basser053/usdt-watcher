@@ -2,7 +2,7 @@ name: USDT Watcher
 
 on:
   schedule:
-    - cron: "*/30 * * * *"   # كل 30 دقيقة
+    - cron: "*/0.1 * * * *"   # كل 30 دقيقة
   workflow_dispatch:
 
 jobs:

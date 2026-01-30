@@ -6,6 +6,7 @@ from datetime import datetime
 from base58 import b58decode_check
 from decimal import Decimal, InvalidOperation
 
+# ================= ENV (GitHub Secrets) =================
 BOT_TOKEN = os.getenv("TG_BOT_TOKEN")
 CHAT_ID = os.getenv("TG_CHAT_ID")
 TRONGRID_API_KEY = os.getenv("TRONGRID_API_KEY")
@@ -14,15 +15,17 @@ ADDRESS = os.getenv("WATCH_ADDRESS")
 if not BOT_TOKEN or not CHAT_ID or not TRONGRID_API_KEY or not ADDRESS:
     raise SystemExit("❌ ناقص Secrets: TG_BOT_TOKEN / TG_CHAT_ID / TRONGRID_API_KEY / WATCH_ADDRESS")
 
+# ================= CONSTANTS =================
 USDT_CONTRACT = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
 TRONGRID_TRIGGER = "https://api.trongrid.io/wallet/triggerconstantcontract"
 TRONGRID_ACCOUNT = f"https://api.trongrid.io/v1/accounts/{ADDRESS}"
 
 HEADERS = {
     "TRON-PRO-API-KEY": TRONGRID_API_KEY,
-    "Content-Type": "application/json"
+    "Content-Type": "application/json",
 }
 
+# ================= HELPERS =================
 def b58_to_hex(addr: str) -> str:
     return b58decode_check(addr).hex()
 
@@ -32,30 +35,42 @@ def pad32(h: str) -> str:
 def short_address(addr: str) -> str:
     return "..." + addr[-6:]
 
-def fmt_like_site_decimal(d: Decimal, max_decimals=6) -> str:
+def fmt_like_site_decimal(d: Decimal, max_decimals: int = 6) -> str:
+    """
+    شكل قريب من TronScan:
+    - فواصل آلاف
+    - حتى 6 منازل
+    - بدون أصفار زائدة
+    """
     q = Decimal("1." + ("0" * max_decimals))
     d = d.quantize(q)
+
     s = format(d, "f").rstrip("0").rstrip(".")
     if s == "" or s == "-0":
         s = "0"
+
     if "." in s:
         whole, frac = s.split(".", 1)
         return f"{int(whole):,}.{frac}"
     return f"{int(s):,}"
 
 def parse_usdt_balance(raw) -> Decimal:
+    """
+    TronGrid ممكن يرجّع USDT:
+    - '123.45' جاهز
+    - '123450000' خام بدون نقطة => لازم / 1e6
+    """
     s = str(raw).strip()
-    if s == "" or s.lower() == "none":
+    if not s or s.lower() == "none":
         return Decimal("0")
     try:
-        # لو فيه نقطة -> جاهز
         if "." in s:
             return Decimal(s)
-        # بدون نقطة -> خام (6 decimals) لازم / 1e6
         return Decimal(s) / Decimal("1000000")
     except (InvalidOperation, ValueError):
         return Decimal("0")
 
+# ================= TRON CHECKS =================
 def is_blacklisted(addr: str) -> bool:
     addr_hex = b58_to_hex(addr)
     payload = {
@@ -63,8 +78,9 @@ def is_blacklisted(addr: str) -> bool:
         "contract_address": b58_to_hex(USDT_CONTRACT),
         "function_selector": "isBlackListed(address)",
         "parameter": pad32(addr_hex),
-        "visible": False
+        "visible": False,
     }
+
     r = requests.post(TRONGRID_TRIGGER, headers=HEADERS, data=json.dumps(payload), timeout=20)
     r.raise_for_status()
     result = r.json().get("constant_result")
@@ -76,6 +92,7 @@ def get_balances():
     r = requests.get(TRONGRID_ACCOUNT, headers=HEADERS, timeout=20)
     r.raise_for_status()
     resp = r.json()
+
     data_list = resp.get("data", [])
     if not data_list:
         return Decimal("0"), Decimal("0")
@@ -85,7 +102,7 @@ def get_balances():
     # TRX: sun -> TRX
     trx = Decimal(str(data.get("balance", 0))) / Decimal("1000000")
 
-    # USDT
+    # USDT TRC20
     usdt_raw = "0"
     for token in data.get("trc20", []):
         if USDT_CONTRACT in token:
@@ -95,19 +112,26 @@ def get_balances():
     usdt = parse_usdt_balance(usdt_raw)
     return usdt, trx
 
+# ================= TELEGRAM =================
 def send_telegram(text: str, loud: bool = True):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    requests.post(url, json={
-        "chat_id": CHAT_ID,
-        "text": text,
-        "disable_notification": (not loud)
-    }, timeout=20)
+    requests.post(
+        url,
+        json={
+            "chat_id": CHAT_ID,
+            "text": text,
+            "disable_notification": (not loud),  # loud=True => صوت
+        },
+        timeout=20,
+    )
 
-def check_address_once():
+# ================= MAIN =================
+def run_once():
     blocked = is_blacklisted(ADDRESS)
     usdt_balance, trx_balance = get_balances()
 
-    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")  # GitHub runs UTC
+    # GitHub Actions time = UTC
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
     short_addr = short_address(ADDRESS)
 
     usdt_txt = fmt_like_site_decimal(usdt_balance, max_decimals=6)
@@ -132,13 +156,14 @@ def check_address_once():
             f"⏰ وقت الفحص:\n{now}"
         )
 
-    # 🔔 “رنّة طويلة” عمليًا: 3 رسائل بصوت
+    # 🔔 “رنّة طويلة” عملياً: 3 رسائل بصوت
     send_telegram(msg, loud=True)
+
 
 if __name__ == "__main__":
     try:
-        check_address_once()
+        run_once()
     except Exception as e:
+        # خليه بصوت لأنه مهم تعرف إن في مشكلة
         send_telegram(f"⚠️ خطأ أثناء الفحص:\n{e}", loud=True)
         raise
-
